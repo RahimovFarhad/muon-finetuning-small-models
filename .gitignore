@@ -1,0 +1,7 @@
+.work/
+data/
+logs/
+__pycache__/
+*.pyc
+results/*_smoke.json
+seeds_todo.txt

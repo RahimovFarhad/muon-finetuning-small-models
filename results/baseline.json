@@ -1,0 +1,17 @@
+{
+  "run": "baseline",
+  "model": "Qwen/Qwen2.5-0.5B",
+  "wikitext2_val_loss": 2.7186502622602506,
+  "wikitext2_val_ppl": 15.159846612593725,
+  "tulu_val_loss": 1.046844468817771,
+  "fineweb_loss": 2.5685833134123417,
+  "arc_easy": 0.6468855218855218,
+  "arc_easy_metric": "acc",
+  "arc_easy_n": 2376,
+  "hellaswag": 0.5265,
+  "hellaswag_metric": "acc_norm",
+  "hellaswag_n": 2000,
+  "mmlu": 0.4695,
+  "mmlu_metric": "acc",
+  "mmlu_n": 2000
+}
