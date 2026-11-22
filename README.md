@@ -1,126 +1,154 @@
-# Does Switching to Muon Hurt Fine-Tuning of Small Open Models?
+# Better Poster Latex Template
 
-**A case study on Qwen2.5-0.5B.** Code, per-run results and figures for the technical report
-*Does Switching to Muon Hurt Fine-Tuning of Small Open Models? A Case Study on Qwen2.5-0.5B*
-(Farhad Rahimov, University of Leeds, November 2026).
+The **Better Poster** is [Mike Morrison](https://twitter.com/mikemorrison)'s response to the traditional academic poster. In his own words:
+> Every field in science uses the same, old, wall-of-text poster design. If we can improve the knowledge transfer efficiency of that design even by a little bit, it could have massive ripple effects on all of science.
+> 
+> Also, poster sessions tend to suck, so here's my pitch to make them more efficient AND more fun with a new approach to designing scientific posters/academic posters that is both more usable, and easier to create!
 
-Almost every open language model is pretrained with AdamW, while Muon has become a strong
-alternative for pretraining. Two 2026 studies disagree on whether switching to Muon for
-fine-tuning an AdamW-pretrained model is harmful: [Qu et al.](https://arxiv.org/abs/2605.10468)
-report a penalty on a narrow task, and [Zhao et al.](https://www.alphaxiv.org/abs/2610.22650)
-find none in broad instruction tuning. This repository tests both settings on one small, heavily
-trained open model under a single protocol.
+ - If you want to learn more about the reasons behind the design and how it improves upon more typical academic poster templates, I recommend Mike's [video](https://www.youtube.com/watch?v=1RwJbhkCA58&feature=youtu.be).
+ - If you want to see how people are using the Better Poster design, see [#betterposter](https://twitter.com/hashtag/betterposter?src=hash) on twitter.
+ - If you want the original PowerPoint template, you can find it [here](https://t.co/6WRGQK63g6).
+ - If you want to start using the LaTeX template instead, download the repository and keep reading!
 
-## Key findings
+<kbd>
+<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/example.png" width="600px" />
+</kbd>
 
-| | Narrow (WikiText-2) | Broad (Tulu-3 subset) |
-| --- | --- | --- |
-| Target task, Muon vs AdamW | Slightly worse: perplexity 12.53 vs 12.47 | No worse: loss 0.9184 vs 0.9197 |
-| Forgetting at equal target loss | AdamW forgets 1.7–2.3× less | AdamW forgets 1.35× less (one matched point) |
-| Forgetting vs weight movement | Pearson r = 0.999 | Pearson r = 0.998 |
-| Peak GPU memory | −1.43 GB (−6%) with Muon | −1.43 GB (−6%) with Muon |
-| Throughput | −8.9% with Muon | −9.6% with Muon |
-
-1. **Switching costs little on the task:** a small penalty in narrow fine-tuning, none in broad.
-2. **Forgetting is set by how far fine-tuning moves the weights.** Across all 38 runs it tracks the
-   relative weight change almost perfectly, with AdamW and Muon on nearly the same curve.
-3. **Best-learning-rate comparisons can mislead.** At each optimizer's best learning rate Muon
-   appears to forget *less* in the narrow setting; compared at equal target loss, it forgets more.
-4. **At this scale there is little reason to switch.** The learning rate matters more than the optimizer.
-
-| Target loss vs learning rate | Forgetting vs weight change | Learning–forgetting trade-off |
-| --- | --- | --- |
-| ![Figure 1](figures/fig1_lr_sweep.png) | ![Figure 2](figures/fig2_forgetting_vs_weight_change.png) | ![Figure 3](figures/fig3_tradeoff.png) |
-
-## Setup in brief
-
-- **Model:** Qwen2.5-0.5B base (494M parameters), full fine-tuning, fp32 weights with bf16 autocast.
-- **Settings:** *narrow*: WikiText-2 in 1,024-token blocks, 2 epochs (306 steps, 5.0M tokens);
-  *broad*: 20,000 Tulu-3 SFT conversations in ChatML, loss on assistant turns only, max 2,048 tokens,
-  2 epochs (2,500 steps, 25.0M tokens).
-- **Optimizers:** AdamW (β = 0.9/0.999, ε = 1e-8) on all parameters; or PyTorch's `torch.optim.Muon`
-  (momentum 0.95, Nesterov, 5 Newton–Schulz steps, `adjust_lr_fn="match_rms_adamw"`) on the 358M
-  attention/MLP matrix parameters, with AdamW on the remaining 136M (embeddings tied to the output
-  layer, norms, biases).
-- **Shared protocol:** 16 sequences per step, 3% warm-up then cosine decay, gradient clipping 1.0,
-  no weight decay, identical data order per seed.
-- **Learning rates:** 7 per optimizer per setting between 1e-6 and 1e-4; the best rate (lowest
-  target loss, seed 0) is repeated with seeds 1 and 2. 38 runs, about 7.3 GPU-hours on one RTX 5090.
-- **Measurements:** target loss; forgetting (loss increase on 500 held-out FineWeb-Edu documents);
-  zero-shot ARC-Easy, HellaSwag and MMLU via log-likelihood scoring; relative weight change
-  ‖W − W₀‖_F / ‖W₀‖_F of the Muon-eligible matrices.
-
-## Repository layout
-
-| File | Purpose |
-| --- | --- |
-| `common.py` | Shared settings (grid, batch sizes, paths) and evaluation helpers |
-| `prepare_data.py` | Downloads the model and datasets once; saves tokenised caches to `data/` |
-| `train.py` | One fine-tuning run (setting × optimizer × learning rate × seed) plus evaluation; `--baseline` evaluates the untouched model |
-| `run_sweep.sh` | Baseline + coarse learning-rate sweep (5 rates × 2 optimizers × 2 settings, seed 0) |
-| `run_finer.sh` | Two extra rates per setting around the optimum, then re-picks the best rates |
-| `pick_best.py` | Chooses each optimizer's best rate by target loss; writes the seed runs to do |
-| `run_seeds.sh` | Seeds 1 and 2 at the best rates, then runs the analysis |
-| `analyze.py` | Summary tables and diagnostic plots from `results/*.json` |
-| `make_paper_figures.py` | The paper's three figures, Table 2 and correlation statistics, from `results/all_runs.csv` (no GPU needed) |
-| `smoke.sh`, `estimate.py` | 30-step smoke test and a projection of the total run time |
-| `setup_env.sh`, `env.sh`, `requirements.txt` | Environment setup |
-| `results/all_runs.csv`, `results/baseline.json` | Per-run results used in the paper |
-
-## Reproducing
-
-**Just the figures and statistics** (any machine, no GPU):
-
-```bash
-pip install numpy pandas matplotlib
-python make_paper_figures.py
+## Documentation
+The template has been implemented as a LaTeX class, `betterposter.cls`. You can load it into your `tex` file by using the command
+```
+\documentclass{betterposter}
 ```
 
-**The full study** (one NVIDIA GPU with at least 24 GB; peak use was about 23 GB; Linux):
+### The `\betterposter` command
 
-```bash
-bash setup_env.sh                 # or: pip install -r requirements.txt  (PyTorch >= 2.9 with CUDA)
-source env.sh
-python prepare_data.py            # downloads Qwen2.5-0.5B, WikiText-2, Tulu-3, FineWeb-Edu sample, benchmarks
-bash smoke.sh                     # ~10 min: checks everything and projects the total time
-nohup bash run_sweep.sh > sweep.log 2>&1 &    # ~4 h on an RTX 5090
-bash run_finer.sh                 # extra rates around the optimum
-bash run_seeds.sh                 # seeds 1 and 2 at the best rates, then analysis
-python make_paper_figures.py
+The main command provided by the `betterposter` class is `\betterposter`. The command takes three arguments: the content of the central, left and right columns, respectively. You type  the content in, and the command takes care of the formatting.
 ```
-
-Finished runs are skipped automatically, so any script can be re-run safely after an interruption.
-By default, Python, model weights and caches go in `./.work`; set `STUDY_BASE` to use a faster disk.
-Recent Blackwell GPUs (RTX 50-series) need a PyTorch build for CUDA 12.8 or newer.
-
-## Limitations
-
-One model at one size; one direction of switching (AdamW-pretrained, Muon fine-tuned); full
-fine-tuning only; Qwen2.5 is assumed to be AdamW-pretrained, following Zhao et al.; a Tulu-3 subset
-rather than the full mixture; benchmarks scored with this repository's own zero-shot code, so
-absolute numbers are not comparable with leaderboards; three seeds only at the selected rates; and
-the link between weight movement and forgetting is correlational.
-
-## Citation
-
-```bibtex
-@techreport{rahimov2026muon,
-  title       = {Does Switching to Muon Hurt Fine-Tuning of Small Open Models? A Case Study on Qwen2.5-0.5B},
-  author      = {Rahimov, Farhad},
-  institution = {University of Leeds},
-  year        = {2026},
-  type        = {Technical report},
-  url         = {https://github.com/RahimovFarhad/muon-finetuning-small-models}
+\betterposter{
+% content of the main column
+}{
+% content of the left column
+}{
+% content of the right column
 }
 ```
 
+### The `\maincolumn` command
+
+The `\maincolumn` command takes care of the formatting of the main column. It takes two arguments: the content of the main section (for the main point of the poster), and the content of the bottom section (destined for the QR code).
+```
+\maincolumn{
+% main point of the poster
+}{
+% QR code
+}
+```
+
+### The `\qrcode` command
+
+The `\qrcode` command formats the QR code for the poster. It takes three arguments: the path for the QR code image, the path for a small icon (a smartphone by default), and the caption ("Take a picture to download the full paper" by default).
+```
+\qrcode{path/to/image}{path/to/icon}{
+% caption
+}
+```
+
+<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/doc/qrwithcaption.png" height="200px" />
+
+Alternatively, the `\compactqrcode` command renders a more compact link by omitting the small icon.
+```
+\compactqrcode{path/to/image}{
+% caption
+}
+```
+
+<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/doc/compactqrwithcaption.png" height="200px" />
+
+#### Generating QR Codes
+
+You should include a QR code that links to a relevant document which complements the poster (your paper, a website containing simulations or data...) There are many free QR code tools available, I have used [www.qr-code-generator.com](https://www.qr-code-generator.com/).
+
+The example included in the template points to this repository:
+
+<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/doc/qrcode.png" height="200px" />
+
+You can also create QR codes which contain a logo:
+
+<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/doc/qrcodeARXIV.png" height="200px" />
+
+### Class Options
+
+The `betterposter` class accepts three options which change the paper size:
+ - `a0paper`, for A0, the default size.
+ - `a1paper`, for A1.
+ - `a2paper`, for A2.
+
+These options behave like the usual LaTeX class options, for instance:
+```
+\documentclass[a0paper]{betterposter}
+```
+#### Other Class Options
+The `betterposter` class extends the basic `article` class. Any options you give `betterposter`, other than the ones mentioned above, will be passed directly to `article`. For instance,
+```
+\documentclass[a0paper,fleqn]{betterposter}
+```
+will let `betterposter` deal with the `a0paper` option, but will pass `fleqn` directly to `article`.
+
+### Custom Formatting Options
+These commands should be placed before `\begin{document}`.
+
+#### Column Width
+You can customise the width of the columns:
+ - The left column, `\setlength{\leftbarwidth}{value}`.
+ - The right column, `\setlength{\rightbarwidth}{value}`.
+ - The main column automatically resizes to the rest of the space available.
+
+#### Column Margins
+You can change the margins of the columns:
+ - The vertical margin of the side columns, `\setlength{\columnmarginvertical}{value}`.
+ - The horizontal margin of the side columns, `\setlength{\columnmarginhorizontal}{value}`.
+ - The vertical margin of the side columns, `\setlength{\maincolumnmarginvertical}{value}`.
+ - The horizontal margin of the side columns, `\setlength{\maincolumnmarginhorizontal}{value}`.
+
+#### Font Sizes
+The `\fontsize` command takes two arguments, the `size` (the size of the font in `pt`) and the `baselineskip` (usually you want `baselineskip` to be roughly 1.25 times the `size`.
+
+You can change specific font sizes:
+ - The text font, `\renewcommand{\fontsizestandard}{\fontsize{28}{35} \selectfont}`.
+ - The main column font, `\renewcommand{\fontsizemain}{\fontsize{28}{35} \selectfont}`.
+ - The title font, `\renewcommand{\fontsizetitle}{\fontsize{28}{35} \selectfont}`.
+ - The author font, `\renewcommand{\fontsizeauthor}{\fontsize{28}{35} \selectfont}`.
+ - The section font, `\renewcommand{\fontsizesection}{\fontsize{28}{35} \selectfont}`.
+
+Additionally, you can change the font size of a specific text segment by placing the text in brackets as:
+```
+{\fontsize{28}{35} \selectfont Your text goes here}
+```
+
+#### Colours
+
+The class defines the theme colours of the original design:
+ - `empirical`: ![#f03c15](https://placehold.it/15/004D40/000000?text=+) `(0,77,64)`,
+ - `theory`: ![#f03c15](https://placehold.it/15/1A237E/000000?text=+) `(26,35,126)`,
+ - `methods`: ![#f03c15](https://placehold.it/15/8C1616/000000?text=+) `(140,22,22)`,
+ - `intervention`: ![#f03c15](https://placehold.it/15/FFD54F/000000?text=+) `(255,213,79)`,
+
+as well as `imperialblue`: ![#f03c15](https://placehold.it/15/003E74/000000?text=+) `(0,62,116)`.
+
+You can change the background and the font colours:
+ - Background of side columns, `\renewcommand{\columnbackgroundcolor}{black}`.
+ - Font of side columns, `\renewcommand{\columnfontcolor}{gray}`.
+ - Background of main column, `\renewcommand{\maincolumnbackgroundcolor}{empirical}`.
+ - Font of main column, `\renewcommand{\maincolumnfontcolor}{gray}`.
+
+
 ## Acknowledgements
 
-I am grateful to John Hodrien (University of Leeds) for arranging GPU access, and to Joseph Barker
-(School of Physics and Astronomy, University of Leeds) for providing the machine used in this work.
-AI assistants were used to help write code and draft text; I designed the study, ran all
-experiments and verified all reported results.
-
-## License
-
-MIT. See `LICENSE`.
+| Item | Author | Preview |
+|:-------:|:-------:|:------:|
+|[Original Better Poster Design](https://t.co/6WRGQK63g6)|[Mike Morrison](https://twitter.com/mikemorrison)|<img src="https://pbs.twimg.com/media/D2o9U6iX0AEkolp.jpg" height="150px" />|
+|[Smartphone icon](https://www.flaticon.com/free-icon/smartphone_65680)|[Freepik](https://www.flaticon.com/authors/freepik)|<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/img/smartphoneBlack.png" height="150px" />|
+|[Ducklings](https://www.pexels.com/photo/selective-focus-photo-of-flock-of-ducklings-perching-on-gray-concrete-pavement-1300355/)|[Magda Ehlers](https://www.pexels.com/@magda-ehlers-pexels)|<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/img/ducklings.jpg" height="150px" />|
+|[Linear regression](http://www.texample.net/tikz/examples/linear-regression/)|Henri Menke|<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/img/tikzexample1.png" height="150px" />|
+|[Commutative diagram](http://www.texample.net/tikz/examples/commutative-diagram/)|[Stefan Kottwitz](http://texblog.net/)|<img src="https://raw.githubusercontent.com/rafaelbailo/betterposter-latex-template/master/img/tikzexample2.png" height="150px" />|
+|[Imperial College London logo](https://www.imperial.ac.uk/brand-style-guide/visual-identity/the-imperial-logo/)|[Imperial College London](https://www.imperial.ac.uk/)|<img src="https://www.imperial.ac.uk/ImageCropToolT4/imageTool/uploaded-images/White-on-navy--tojpeg_1495792347019_x1.jpg" height="150px" />|
